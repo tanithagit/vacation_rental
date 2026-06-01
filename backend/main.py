@@ -9,7 +9,7 @@ from models.payment import Payment
 from models.review import Review
 
 # Import routers
-from routers import auth, properties, bookings
+from routers import auth, properties, bookings, payments
 
 app = FastAPI(
     title="Vacation Rental Platform",
@@ -29,6 +29,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(properties.router)
 app.include_router(bookings.router)
+app.include_router(payments.router)
 
 @app.get("/")
 def root():
