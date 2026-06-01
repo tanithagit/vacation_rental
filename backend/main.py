@@ -9,7 +9,7 @@ from models.payment import Payment
 from models.review import Review
 
 # Import routers
-from routers import auth, properties, bookings, payments
+from routers import auth, properties, bookings, payments, reviews
 
 app = FastAPI(
     title="Vacation Rental Platform",
@@ -30,6 +30,7 @@ app.include_router(auth.router)
 app.include_router(properties.router)
 app.include_router(bookings.router)
 app.include_router(payments.router)
+app.include_router(reviews.router)
 
 @app.get("/")
 def root():
