@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Import ALL models first - this is critical!
+# Import ALL models
 from models.user import User
 from models.property import Property, PropertyImage, Availability
 from models.booking import Booking
@@ -9,7 +9,7 @@ from models.payment import Payment
 from models.review import Review
 
 # Import routers
-from routers import auth
+from routers import auth, properties
 
 app = FastAPI(
     title="Vacation Rental Platform",
@@ -17,7 +17,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS allows React frontend to talk to this backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -26,8 +25,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers
+# Register ALL routers
 app.include_router(auth.router)
+app.include_router(properties.router)
 
 @app.get("/")
 def root():
