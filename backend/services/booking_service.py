@@ -16,24 +16,14 @@ def check_booking_conflicts(
     check_out: date,
     exclude_booking_id: Optional[int] = None
 ) -> bool:
-    """
-    Check if there are any overlapping bookings.
-    Returns True if there IS a conflict (dates are taken)
-    """
     query = db.query(Booking).filter(
         Booking.property_id == property_id,
         Booking.status.in_([BookingStatus.confirmed, BookingStatus.pending]),
-        # Overlap condition:
-        # Existing booking starts before our checkout
-        # AND existing booking ends after our checkin
         Booking.check_in_date < check_out,
         Booking.check_out_date > check_in
     )
-
-    # Exclude current booking when updating
     if exclude_booking_id:
         query = query.filter(Booking.id != exclude_booking_id)
-
     return query.first() is not None
 
 
@@ -42,7 +32,6 @@ def calculate_total_amount(
     check_in: date,
     check_out: date
 ) -> float:
-    """Calculate total booking amount"""
     num_nights = (check_out - check_in).days
     return price_per_night * num_nights
 
@@ -52,11 +41,6 @@ def create_booking(
     booking_data: BookingCreate,
     guest_id: int
 ) -> Booking:
-    """
-    Create a new booking with all validation checks
-    This implements all the critical booking rules
-    """
-
     # Rule 1: Check property exists
     property = db.query(Property).filter(
         Property.id == booking_data.property_id
@@ -68,28 +52,28 @@ def create_booking(
             detail="Property not found"
         )
 
-    # Rule 2: Prevent host from booking their own property
+    # Rule 2: Prevent host booking own property
     if property.host_id == guest_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot book your own property"
         )
 
-    # Rule 3: Validate check-out is after check-in
+    # Rule 3: Validate dates
     if booking_data.check_out_date <= booking_data.check_in_date:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Check-out date must be after check-in date"
         )
 
-    # Rule 4: Check-in must be in the future
+    # Rule 4: Check-in must be future
     if booking_data.check_in_date < date.today():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Check-in date cannot be in the past"
         )
 
-    # Rule 5: Check for overlapping bookings (prevent double booking)
+    # Rule 5: Check double booking
     has_conflict = check_booking_conflicts(
         db=db,
         property_id=booking_data.property_id,
@@ -103,15 +87,14 @@ def create_booking(
             detail="Property is not available for the selected dates"
         )
 
-    # Calculate total amount
+    # Calculate total
     total_amount = calculate_total_amount(
         price_per_night=property.price_per_night,
         check_in=booking_data.check_in_date,
         check_out=booking_data.check_out_date
     )
 
-    # Create the booking with PENDING status
-    # Status becomes CONFIRMED only after payment
+    # Create booking
     new_booking = Booking(
         property_id=booking_data.property_id,
         guest_id=guest_id,
@@ -129,30 +112,22 @@ def create_booking(
 
 
 def get_booking_by_id(db: Session, booking_id: int) -> Optional[Booking]:
-    """Get a single booking by ID"""
     return db.query(Booking).filter(Booking.id == booking_id).first()
 
 
 def get_guest_bookings(db: Session, guest_id: int) -> List[Booking]:
-    """Get all bookings for a guest"""
     return db.query(Booking).filter(
         Booking.guest_id == guest_id
     ).order_by(Booking.created_at.desc()).all()
 
 
 def get_host_bookings(db: Session, host_id: int) -> List[Booking]:
-    """Get all bookings for properties owned by a host"""
     return db.query(Booking).join(Property).filter(
         Property.host_id == host_id
     ).order_by(Booking.created_at.desc()).all()
 
 
-def cancel_booking(
-    db: Session,
-    booking_id: int,
-    user_id: int
-) -> Booking:
-    """Cancel a booking"""
+def cancel_booking(db: Session, booking_id: int, user_id: int) -> Booking:
     booking = get_booking_by_id(db, booking_id)
 
     if not booking:
@@ -161,14 +136,12 @@ def cancel_booking(
             detail="Booking not found"
         )
 
-    # Only the guest who made the booking can cancel it
     if booking.guest_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only cancel your own bookings"
         )
 
-    # Cannot cancel already completed or canceled bookings
     if booking.status in [BookingStatus.completed, BookingStatus.canceled]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -178,14 +151,30 @@ def cancel_booking(
     booking.status = BookingStatus.canceled
     db.commit()
     db.refresh(booking)
+
+    # Send cancellation email
+    try:
+        from services.email_service import send_booking_cancellation_email
+        guest = db.query(User).filter(User.id == booking.guest_id).first()
+        property = db.query(Property).filter(
+            Property.id == booking.property_id
+        ).first()
+
+        if guest and property:
+            send_booking_cancellation_email(
+                guest_email=guest.email,
+                guest_name=guest.full_name,
+                property_title=property.title,
+                check_in=str(booking.check_in_date),
+                check_out=str(booking.check_out_date)
+            )
+    except Exception as e:
+        print(f"Email sending failed: {e}")
+
     return booking
 
 
 def confirm_booking(db: Session, booking_id: int) -> Booking:
-    """
-    Confirm a booking after successful payment
-    This is called automatically after payment succeeds
-    """
     booking = get_booking_by_id(db, booking_id)
 
     if not booking:
@@ -198,11 +187,58 @@ def confirm_booking(db: Session, booking_id: int) -> Booking:
     booking.payment_status = PaymentStatus.paid
     db.commit()
     db.refresh(booking)
+
+    # Send confirmation emails
+    try:
+        from services.email_service import (
+            send_booking_confirmation_email,
+            send_payment_confirmation_email,
+            send_host_booking_notification
+        )
+
+        guest = db.query(User).filter(User.id == booking.guest_id).first()
+        property = db.query(Property).filter(
+            Property.id == booking.property_id
+        ).first()
+        host = db.query(User).filter(User.id == property.host_id).first()
+
+        if guest and property:
+            # Email to guest
+            send_booking_confirmation_email(
+                guest_email=guest.email,
+                guest_name=guest.full_name,
+                property_title=property.title,
+                check_in=str(booking.check_in_date),
+                check_out=str(booking.check_out_date),
+                total_amount=booking.total_amount
+            )
+
+            # Payment receipt to guest
+            send_payment_confirmation_email(
+                guest_email=guest.email,
+                guest_name=guest.full_name,
+                amount=booking.total_amount,
+                property_title=property.title
+            )
+
+        if host and property:
+            # Notify host
+            send_host_booking_notification(
+                host_email=host.email,
+                host_name=host.full_name,
+                guest_name=guest.full_name if guest else "Guest",
+                property_title=property.title,
+                check_in=str(booking.check_in_date),
+                check_out=str(booking.check_out_date),
+                total_amount=booking.total_amount
+            )
+    except Exception as e:
+        print(f"Email sending failed: {e}")
+
     return booking
 
 
 def complete_booking(db: Session, booking_id: int) -> Booking:
-    """Mark a booking as completed after stay ends"""
     booking = get_booking_by_id(db, booking_id)
 
     if not booking:
@@ -223,11 +259,7 @@ def complete_booking(db: Session, booking_id: int) -> Booking:
     return booking
 
 
-def get_upcoming_bookings_for_host(
-    db: Session,
-    host_id: int
-) -> List[Booking]:
-    """Get upcoming bookings for host dashboard"""
+def get_upcoming_bookings_for_host(db: Session, host_id: int) -> List[Booking]:
     today = date.today()
     return db.query(Booking).join(Property).filter(
         Property.host_id == host_id,
@@ -237,10 +269,8 @@ def get_upcoming_bookings_for_host(
 
 
 def get_host_revenue(db: Session, host_id: int) -> float:
-    """Calculate total revenue for a host"""
     bookings = db.query(Booking).join(Property).filter(
         Property.host_id == host_id,
         Booking.payment_status == PaymentStatus.paid
     ).all()
-
     return sum(b.total_amount for b in bookings)
