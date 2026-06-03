@@ -39,41 +39,63 @@ def create_new_property(
 
 
 @router.get("/search")
+@router.get("/search")
 def search_available_properties(
-    location: Optional[str] = Query(None, description="Search by city or area"),
-    min_price: Optional[float] = Query(None, description="Minimum price per night"),
-    max_price: Optional[float] = Query(None, description="Maximum price per night"),
-    max_guests: Optional[int] = Query(None, description="Number of guests"),
-    check_in: Optional[date] = Query(None, description="Check-in date YYYY-MM-DD"),
-    check_out: Optional[date] = Query(None, description="Check-out date YYYY-MM-DD"),
-    page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(10, ge=1, le=50, description="Results per page")
+    location: Optional[str] = Query(None),
+    min_price: Optional[float] = Query(None),
+    max_price: Optional[float] = Query(None),
+    max_guests: Optional[int] = Query(None),
+    check_in: Optional[date] = Query(None),
+    check_out: Optional[date] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db)
 ):
-    """Search and filter properties - PUBLIC (no login needed)"""
-    from database import SessionLocal
-    db = SessionLocal()
-    try:
-        # Validate dates if provided
-        if check_in and check_out:
-            if check_out <= check_in:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Check-out date must be after check-in date"
-                )
-        return search_properties(
-            db=db,
-            location=location,
-            min_price=min_price,
-            max_price=max_price,
-            max_guests=max_guests,
-            check_in=check_in,
-            check_out=check_out,
-            page=page,
-            page_size=page_size
-        )
-    finally:
-        db.close()
+    """Search and filter properties - PUBLIC"""
+    if check_in and check_out:
+        if check_out <= check_in:
+            raise HTTPException(
+                status_code=400,
+                detail="Check-out date must be after check-in date"
+            )
+    result = search_properties(
+        db=db,
+        location=location,
+        min_price=min_price,
+        max_price=max_price,
+        max_guests=max_guests,
+        check_in=check_in,
+        check_out=check_out,
+        page=page,
+        page_size=page_size
+    )
 
+    # Manually build response with images
+    properties_with_images = []
+    for prop in result["properties"]:
+        prop_dict = {
+            "id": prop.id,
+            "host_id": prop.host_id,
+            "title": prop.title,
+            "description": prop.description,
+            "location": prop.location,
+            "price_per_night": prop.price_per_night,
+            "max_guests": prop.max_guests,
+            "created_at": prop.created_at,
+            "images": [
+                {"id": img.id, "image_url": img.image_url}
+                for img in prop.images
+            ]
+        }
+        properties_with_images.append(prop_dict)
+
+    return {
+        "properties": properties_with_images,
+        "total": result["total"],
+        "page": result["page"],
+        "page_size": result["page_size"],
+        "total_pages": result["total_pages"]
+    }
 
 @router.get("/{property_id}", response_model=PropertyWithRating)
 def get_property(

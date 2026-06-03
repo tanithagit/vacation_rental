@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from fastapi import HTTPException, status
 from typing import Optional, List
@@ -78,7 +78,7 @@ def search_properties(
     page: int = 1,
     page_size: int = 10
 ):
-    query = db.query(Property)
+    query = db.query(Property).options(joinedload(Property.images))
 
     if location:
         query = query.filter(Property.location.ilike(f"%{location}%"))

@@ -13,6 +13,7 @@ export default function PropertyDetail() {
   const [checkOut, setCheckOut] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     fetchProperty();
@@ -22,6 +23,8 @@ export default function PropertyDetail() {
   const fetchProperty = async () => {
     try {
       const res = await API.get(`/properties/${id}`);
+      console.log("Property data:", res.data);
+      console.log("Images:", res.data.images);
       setProperty(res.data);
     } catch (err) {
       console.error("Failed to fetch property");
@@ -75,25 +78,42 @@ export default function PropertyDetail() {
         )
       : 0;
 
+  const imageUrl =
+    property.images &&
+    property.images.length > 0 &&
+    property.images[0].image_url;
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
-      {/* Images */}
-      <div className="bg-gray-200 h-72 rounded-2xl flex items-center justify-center mb-6 overflow-hidden">
-        {property.images && property.images.length > 0 ? (
+
+      {/* Property Image */}
+      <div className="h-72 rounded-2xl mb-6 overflow-hidden bg-gray-200">
+        {imageUrl && !imageError ? (
           <img
-            src={property.images[0].image_url}
+            src={imageUrl}
             alt={property.title}
             className="w-full h-full object-cover"
+            onError={() => {
+              console.log("Image failed:", imageUrl);
+              setImageError(true);
+            }}
+            onLoad={() => console.log("Image loaded:", imageUrl)}
           />
         ) : (
-          <span className="text-gray-400 text-6xl">🏠</span>
+          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-blue-100 to-blue-200">
+            <span className="text-8xl">🏠</span>
+            <p className="text-blue-600 font-medium mt-2">{property.title}</p>
+          </div>
         )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+
         {/* Property Info */}
         <div className="md:col-span-2">
-          <h1 className="text-3xl font-bold text-gray-800">{property.title}</h1>
+          <h1 className="text-3xl font-bold text-gray-800">
+            {property.title}
+          </h1>
           <p className="text-gray-500 mt-1">📍 {property.location}</p>
           <p className="text-gray-500">👥 Up to {property.max_guests} guests</p>
 
@@ -105,24 +125,33 @@ export default function PropertyDetail() {
 
           <p className="text-gray-700 mt-4">{property.description}</p>
 
+          {/* Debug info - remove after fixing */}
+          <div className="mt-4 p-3 bg-yellow-50 rounded-lg text-xs text-gray-500">
+            <p>Images count: {property.images?.length || 0}</p>
+            {property.images?.length > 0 && (
+              <p>Image URL: {property.images[0].image_url}</p>
+            )}
+          </div>
+
           {/* Reviews */}
           <div className="mt-8">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Reviews</h2>
+            <h2 className="text-xl font-bold text-gray-800 mb-4">
+              Reviews
+            </h2>
             {reviews.length === 0 ? (
               <p className="text-gray-500">No reviews yet</p>
             ) : (
               reviews.map((review) => (
-                <div
-                  key={review.id}
-                  className="border-b border-gray-100 py-4"
-                >
+                <div key={review.id} className="border-b border-gray-100 py-4">
                   <div className="flex justify-between">
                     <span className="font-medium">{review.guest_name}</span>
                     <span className="text-yellow-500">
                       {"⭐".repeat(review.rating)}
                     </span>
                   </div>
-                  <p className="text-gray-600 text-sm mt-1">{review.comment}</p>
+                  <p className="text-gray-600 text-sm mt-1">
+                    {review.comment}
+                  </p>
                 </div>
               ))
             )}
@@ -133,7 +162,9 @@ export default function PropertyDetail() {
         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm h-fit">
           <p className="text-2xl font-bold text-blue-600">
             ₹{property.price_per_night}
-            <span className="text-gray-400 font-normal text-base">/night</span>
+            <span className="text-gray-400 font-normal text-base">
+              /night
+            </span>
           </p>
 
           <div className="mt-4 space-y-3">
@@ -166,7 +197,9 @@ export default function PropertyDetail() {
             {nights > 0 && (
               <div className="bg-gray-50 rounded-lg p-3 text-sm">
                 <div className="flex justify-between">
-                  <span>₹{property.price_per_night} × {nights} nights</span>
+                  <span>
+                    ₹{property.price_per_night} × {nights} nights
+                  </span>
                   <span>₹{property.price_per_night * nights}</span>
                 </div>
                 <div className="flex justify-between font-bold mt-2 pt-2 border-t">
@@ -176,9 +209,7 @@ export default function PropertyDetail() {
               </div>
             )}
 
-            {error && (
-              <p className="text-red-500 text-sm">{error}</p>
-            )}
+            {error && <p className="text-red-500 text-sm">{error}</p>}
 
             <button
               onClick={handleBook}

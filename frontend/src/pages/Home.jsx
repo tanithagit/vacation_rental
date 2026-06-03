@@ -23,6 +23,7 @@ export default function Home() {
       if (search.max_guests) params.append("max_guests", search.max_guests);
 
       const response = await API.get(`/properties/search?${params}`);
+      console.log("Properties:", response.data.properties);
       setProperties(response.data.properties || []);
     } catch (err) {
       console.error("Failed to fetch properties", err);
@@ -35,8 +36,37 @@ export default function Home() {
     fetchProperties();
   }, []);
 
+  const PropertyImage = ({ property }) => {
+    const [imgError, setImgError] = useState(false);
+    const hasImage = property.images && property.images.length > 0;
+    const imageUrl = hasImage ? property.images[0].image_url : null;
+
+    if (!hasImage || imgError) {
+      return (
+        <div className="w-full h-48 flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
+          <span className="text-5xl">🏠</span>
+          <span className="text-xs text-blue-400 mt-1">{property.location}</span>
+        </div>
+      );
+    }
+
+    return (
+      <img
+        src={imageUrl}
+        alt={property.title}
+        className="w-full h-48 object-cover"
+        onError={() => {
+          console.log("Image failed for property:", property.id, imageUrl);
+          setImgError(true);
+        }}
+        onLoad={() => console.log("Image loaded for property:", property.id)}
+      />
+    );
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
+
       {/* Hero Section */}
       <div className="bg-blue-600 text-white rounded-2xl p-10 mb-8 text-center">
         <h1 className="text-4xl font-bold mb-2">Find Your Perfect Stay</h1>
@@ -50,28 +80,36 @@ export default function Home() {
             type="text"
             placeholder="Search by location..."
             value={search.location}
-            onChange={(e) => setSearch({ ...search, location: e.target.value })}
+            onChange={(e) =>
+              setSearch({ ...search, location: e.target.value })
+            }
             className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <input
             type="number"
             placeholder="Min price"
             value={search.min_price}
-            onChange={(e) => setSearch({ ...search, min_price: e.target.value })}
+            onChange={(e) =>
+              setSearch({ ...search, min_price: e.target.value })
+            }
             className="w-28 border border-gray-200 rounded-lg px-3 py-2 text-gray-800 text-sm focus:outline-none"
           />
           <input
             type="number"
             placeholder="Max price"
             value={search.max_price}
-            onChange={(e) => setSearch({ ...search, max_price: e.target.value })}
+            onChange={(e) =>
+              setSearch({ ...search, max_price: e.target.value })
+            }
             className="w-28 border border-gray-200 rounded-lg px-3 py-2 text-gray-800 text-sm focus:outline-none"
           />
           <input
             type="number"
             placeholder="Guests"
             value={search.max_guests}
-            onChange={(e) => setSearch({ ...search, max_guests: e.target.value })}
+            onChange={(e) =>
+              setSearch({ ...search, max_guests: e.target.value })
+            }
             className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-gray-800 text-sm focus:outline-none"
           />
           <button
@@ -103,17 +141,7 @@ export default function Home() {
               className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer hover:shadow-md transition"
             >
               {/* Property Image */}
-              <div className="bg-gray-200 h-48 flex items-center justify-center">
-                {property.images && property.images.length > 0 ? (
-                  <img
-                    src={property.images[0].image_url}
-                    alt={property.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-gray-400 text-4xl">🏠</span>
-                )}
-              </div>
+              <PropertyImage property={property} />
 
               {/* Property Info */}
               <div className="p-4">
